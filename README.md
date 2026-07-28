@@ -35,7 +35,10 @@ pip install "minicheck-mcp @ git+https://github.com/nickharris808/minicheck-mcp.
 pip install "minicheck-mcp[mcp] @ git+https://github.com/nickharris808/minicheck-mcp.git"  # + the MCP SDK
 ```
 
-> `pip install minicheck-mcp` will work once the PyPI release lands. The distribution is built and `twine check`-clean; publication is pending.
+> `pip install minicheck-mcp` does not work yet — the package is not on PyPI. Install from GitHub
+> as shown above; that pulls in `minicheck` automatically. `python build_pypi.py` produces a
+> PyPI-uploadable artifact for when both packages are published (PyPI rejects the direct dependency
+> reference this package uses to stay installable without an index).
 
 Then register it (`claude_desktop_config.json`, or any MCP client):
 
