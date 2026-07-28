@@ -13,6 +13,7 @@ Tools
 ``check_invariant``  exhaustive reachability; returns a shortest counterexample when it fails
 ``check_liveness``   every reachable state can still reach the goal (AG-EF, not mere reachability)
 ``validate_spec``    schema check with a message naming the offending key
+``visualise``        a Mermaid state diagram with the counterexample highlighted
 ``spec_help``        the spec format, with a worked example
 
 Run it::
@@ -39,8 +40,12 @@ from minicheck import (
     spec_warnings as _spec_warnings,
 )
 from minicheck import (
+    to_mermaid as _to_mermaid,
+)
+from minicheck import (
     validate_spec as _validate_spec,
 )
+from minicheck.verdict import Verdict, combine, from_holds
 
 SPEC_HELP = """\
 A spec is JSON. No code is executed.
@@ -172,16 +177,12 @@ def check_invariant(spec: dict, invariant: str | None = None) -> dict:
             entry["steps"] = len(r["counterexample"]) - 1
         out["invariants"][name] = entry
 
-    # Three-valued, and it must not collapse. `False` beats `None` beats `True`: a refutation is a
-    # definite answer, an undetermined search is not a pass, and only an all-proved set is `True`.
-    verdicts = [v["holds"] for v in out["invariants"].values()]
-    if any(v is False for v in verdicts):
-        out["all_hold"] = False
-    elif any(v is None for v in verdicts):
-        out["all_hold"] = None
-    else:
-        out["all_hold"] = True
-    out["verdict"] = {True: "PROVED", False: "REFUTED", None: "UNDETERMINED"}[out["all_hold"]]
+    # Three-valued, aggregated through the shared contract in `minicheck.verdict` so the server,
+    # the CLI and every emitter cannot drift apart on what "undetermined" means.
+    agg = combine(from_holds(v["holds"], exhaustive=res["exhaustive"]) for v in out["invariants"].values())
+    out["all_hold"] = {Verdict.PROVED: True, Verdict.REFUTED: False}.get(agg)
+    out["verdict"] = agg.value
+    out["verdict_means"] = agg.explanation
     return out
 
 
@@ -219,6 +220,44 @@ def check_liveness(spec: dict) -> dict:
     return out
 
 
+def visualise(spec: dict) -> dict:
+    """Render the spec as a Mermaid state diagram, with any counterexample highlighted.
+
+    An agent that has just been handed a counterexample as a list of dicts can pass this straight
+    back to the user as a picture. Refuses on a graph too large to read rather than returning an
+    unusable blob.
+    """
+    try:
+        model = protocol_from_spec(spec)
+    except SpecError as e:
+        return _err(e)
+
+    verdict, cex = None, None
+    if model.invariants:
+        try:
+            res = _check_safety(model)
+            agg = combine(from_holds(p["holds"], exhaustive=res["exhaustive"]) for p in res["properties"].values())
+            verdict = agg.value
+            cex = next((p["counterexample"] for p in res["properties"].values() if p["holds"] is False), None)
+        except Exception:
+            # A diagram of the structure is still useful even if the check could not complete.
+            verdict = None
+
+    try:
+        diagram = _to_mermaid(model, cex, verdict=verdict)
+    except Exception as e:
+        return _err(e, f"the graph could not be drawn: {e}", error="RenderTooLarge")
+
+    return {
+        "ok": True,
+        "format": "mermaid",
+        "diagram": diagram,
+        "verdict": verdict,
+        "has_counterexample": cex is not None,
+        "note": "renders directly in GitHub Markdown, or any Mermaid viewer",
+    }
+
+
 def validate_spec(spec: dict, int_bound: int | None = None) -> dict:
     """Schema-check a spec without running it.
 
@@ -253,6 +292,7 @@ TOOLS = {
     "check_invariant": check_invariant,
     "check_liveness": check_liveness,
     "validate_spec": validate_spec,
+    "visualise": visualise,
     "spec_help": spec_help,
 }
 
@@ -295,6 +335,19 @@ TOOL_SCHEMAS = [
     {
         "name": "validate_spec",
         "description": "Schema-check a spec without running it. Returns the offending key on failure.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {"spec": {"type": "object"}},
+            "required": ["spec"],
+        },
+    },
+    {
+        "name": "visualise",
+        "description": (
+            "Render the spec as a Mermaid state diagram with any counterexample highlighted and "
+            "its steps numbered. Use this to show a user WHY a property fails instead of "
+            "describing it. Output renders directly in GitHub Markdown."
+        ),
         "inputSchema": {
             "type": "object",
             "properties": {"spec": {"type": "object"}},

@@ -299,3 +299,53 @@ def test_results_are_json_serialisable_for_every_shape():
     for spec in (SAFE_SPEC, BROKEN_SPEC, UNBOUNDED_SPEC, {}, None):
         for tool in ("check_invariant", "check_liveness", "validate_spec"):
             json.dumps(dispatch(tool, {"spec": spec}), default=str)
+
+
+# ------------------------------------------------------------------- the visualise tool (new)
+def test_visualise_returns_a_diagram_with_the_trace_highlighted():
+    r = dispatch("visualise", {"spec": BROKEN_SPEC})
+    assert r["ok"] is True
+    assert r["format"] == "mermaid"
+    assert r["diagram"].startswith("stateDiagram-v2")
+    assert r["verdict"] == "REFUTED"
+    assert r["has_counterexample"] is True
+    assert "classDef cex" in r["diagram"]
+
+
+def test_visualise_on_a_safe_spec_has_no_counterexample():
+    r = dispatch("visualise", {"spec": SAFE_SPEC})
+    assert r["ok"] is True
+    assert r["verdict"] == "PROVED"
+    assert r["has_counterexample"] is False
+
+
+def test_visualise_refuses_an_unreadable_graph_rather_than_returning_a_blob():
+    fields = [f"f{i}" for i in range(9)]
+    spec = {
+        "fields": fields,
+        "initial": dict.fromkeys(fields, 0),
+        "transitions": [{"label": f"s{f}", "when": {f: 0}, "set": {f: 1}} for f in fields],
+        "invariants": {"t": {"forbid": {fields[0]: 9}}},
+    }
+    r = dispatch("visualise", {"spec": spec})
+    assert r["ok"] is False
+    assert_verdict_contract(r)
+
+
+@pytest.mark.parametrize("args", [{}, {"spec": None}, {"spec": "x"}, {"spec": {}}, {"wrong": 1}])
+def test_visualise_never_raises_on_bad_input(args):
+    r = dispatch("visualise", args)
+    assert isinstance(r, dict)
+    assert_verdict_contract(r)
+
+
+def test_the_new_tool_is_declared_in_the_schema():
+    assert "visualise" in {t["name"] for t in TOOL_SCHEMAS}
+    assert "visualise" in TOOLS
+
+
+def test_check_invariant_now_explains_its_verdict():
+    """The shared contract carries an explanation, so an agent can quote it to a user."""
+    r = dispatch("check_invariant", {"spec": UNBOUNDED_SPEC})
+    assert r["verdict"] == "UNDETERMINED"
+    assert "NOT a pass" in r["verdict_means"]

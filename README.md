@@ -2,7 +2,7 @@
 
 [![install](https://img.shields.io/badge/install-from%20GitHub-blue)](https://github.com/nickharris808/minicheck-mcp#install)
 [![CI](https://img.shields.io/badge/ci-passing-brightgreen)](https://github.com/nickharris808/minicheck-mcp/actions/workflows/ci.yml)
-[![tests](https://img.shields.io/badge/tests-85%20passing-brightgreen)](tests/)
+[![tests](https://img.shields.io/badge/tests-96%20passing-brightgreen)](tests/)
 [![python](https://img.shields.io/badge/python-3.10%2B-blue)](pyproject.toml)
 [![license](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 ![mcp](https://img.shields.io/badge/MCP-server-blueviolet)
@@ -150,6 +150,7 @@ and ask again. If `ok` is `false`, no verdict exists at all and `all_hold` is `n
 | `check_invariant` | Exhaustive reachability. Shortest counterexample when a property fails. |
 | `check_liveness` | Every reachable state can **still** reach the goal (AG-EF) — catches a state you can enter and never leave, which plain reachability misses. |
 | `validate_spec` | Schema check without running it; the error names the offending key. |
+| `visualise` | A **Mermaid state diagram** with the counterexample highlighted and its steps numbered — renders directly in GitHub Markdown, so an agent can show a user *why* rather than describe it. |
 | `spec_help` | The format, with a worked example **and its actual verdict**. |
 
 ## The spec format
@@ -207,6 +208,9 @@ agent reads a field and acts on it rather than bringing judgement to a paragraph
 | `false` | `REFUTED` | a counterexample is attached and it replays against your spec |
 | `null` | `UNDETERMINED` | the search did not finish. **Not a pass.** |
 | `null` | `ERROR` | with `ok: false` — no verdict was produced at all |
+
+Every response also carries `verdict_means`, a one-line explanation an agent can quote to a user
+verbatim rather than paraphrasing (and possibly softening) it.
 
 Every response carries `all_hold` and `holds` explicitly, including errors. An earlier version
 omitted them on failure, so `result.get("all_hold")` returned `None` for a crash and for a genuine
@@ -277,7 +281,7 @@ bottleneck in the server layer itself — it is a thin dispatch over
 pip install -e ".[test]" && pytest
 ```
 
-85 tests, every tool through the real `dispatch` path, including malformed input, unknown tools, and
+96 tests, every tool through the real `dispatch` path, including malformed input, unknown tools, and
 the no-code-execution guarantee.
 
 ## The portfolio
