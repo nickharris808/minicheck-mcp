@@ -79,3 +79,50 @@ def test_readme_states_what_the_tool_does_not_establish():
     assert re.search(r"^#+ .*(honest scope|limitations|what this does not)", text, re.M | re.I), (
         "README has no section stating the tool's limits"
     )
+
+
+# ------------------------------------------------------------- the tutorial must be reproducible
+SESSION_BROKEN = {
+    "name": "session",
+    "fields": ["state", "used"],
+    "initial": {"state": 0, "used": 0},
+    "transitions": [
+        {"label": "open", "when": {"state": 0}, "set": {"state": 1}},
+        {"label": "use", "when": {"state": 1}, "set": {"used": 1}},
+        {"label": "close", "when": {"state": 1}, "set": {"state": 2}},
+        {"label": "reopen", "when": {"state": 2}, "set": {"state": 1}},
+    ],
+    "invariants": {"no_use_after_close": {"forbid": {"state": 2, "used": 1}}},
+}
+
+SESSION_FIXED = {
+    **SESSION_BROKEN,
+    "transitions": [
+        {"label": "open", "when": {"state": 0}, "set": {"state": 1}},
+        {"label": "use", "when": {"state": 1}, "set": {"used": 1}},
+        {"label": "close", "when": {"state": 1}, "set": {"state": 2, "used": 0}},
+        {"label": "reopen", "when": {"state": 2}, "set": {"state": 1}},
+    ],
+}
+
+
+def test_tutorial_refutation_matches_the_readme():
+    from minicheck_mcp import dispatch
+
+    r = dispatch("check_invariant", {"spec": SESSION_BROKEN})
+    assert r["verdict"] == "REFUTED"
+    assert r["reachable_states"] == 5
+    assert r["exhaustive"] is True
+    inv = r["invariants"]["no_use_after_close"]
+    assert inv["steps"] == 3
+    assert [s["label"] for s in inv["counterexample"]] == [None, "open", "use", "close"]
+
+
+def test_tutorial_fix_matches_the_readme():
+    from minicheck_mcp import dispatch
+
+    r = dispatch("check_invariant", {"spec": SESSION_FIXED})
+    assert r["verdict"] == "PROVED"
+    assert r["exhaustive"] is True
+    assert r["reachable_states"] == 4
+    assert r["all_hold"] is True

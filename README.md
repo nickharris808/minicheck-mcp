@@ -2,7 +2,7 @@
 
 [![install](https://img.shields.io/badge/install-from%20GitHub-blue)](https://github.com/nickharris808/minicheck-mcp#install)
 [![CI](https://img.shields.io/badge/ci-passing-brightgreen)](https://github.com/nickharris808/minicheck-mcp/actions/workflows/ci.yml)
-[![tests](https://img.shields.io/badge/tests-83%20passing-brightgreen)](tests/)
+[![tests](https://img.shields.io/badge/tests-85%20passing-brightgreen)](tests/)
 [![python](https://img.shields.io/badge/python-3.10%2B-blue)](pyproject.toml)
 [![license](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 ![mcp](https://img.shields.io/badge/MCP-server-blueviolet)
@@ -73,6 +73,75 @@ retry more than 3 times."* It calls `check_invariant` and gets back:
 ```
 
 Not "this might loop forever" — the exact four steps that break it.
+
+## Tutorial — what a session actually looks like
+
+The agent has written a session lifecycle and wants to know whether a session can be used after it
+has been closed. Here is the whole exchange.
+
+**1. The agent asks for the format** (`spec_help`), then sends `check_invariant`:
+
+```json
+{
+  "name": "session",
+  "fields": ["state", "used"],
+  "initial": {"state": 0, "used": 0},
+  "transitions": [
+    {"label": "open",  "when": {"state": 0}, "set": {"state": 1}},
+    {"label": "use",   "when": {"state": 1}, "set": {"used": 1}},
+    {"label": "close", "when": {"state": 1}, "set": {"state": 2}},
+    {"label": "reopen","when": {"state": 2}, "set": {"state": 1}}
+  ],
+  "invariants": {"no_use_after_close": {"forbid": {"state": 2, "used": 1}}}
+}
+```
+
+**2. It gets a refutation with the exact path:**
+
+```json
+{
+  "ok": true,
+  "verdict": "REFUTED",
+  "exhaustive": true,
+  "reachable_states": 5,
+  "all_hold": false,
+  "invariants": {
+    "no_use_after_close": {
+      "holds": false,
+      "steps": 3,
+      "counterexample": [
+        {"label": null,    "state": {"state": 0, "used": 0}},
+        {"label": "open",  "state": {"state": 1, "used": 0}},
+        {"label": "use",   "state": {"state": 1, "used": 1}},
+        {"label": "close", "state": {"state": 2, "used": 1}}
+      ]
+    }
+  }
+}
+```
+
+The invariant as written forbids *ever having used* a closed session, which is not what the agent
+meant — it meant "no `use` transition while closed". The counterexample makes the difference
+concrete rather than leaving it to a plausible-sounding paragraph.
+
+**3. The agent fixes the model and re-runs.** `used` should mean "used since this session opened",
+so `close` clears it:
+
+```json
+{"label": "close", "when": {"state": 1}, "set": {"state": 2, "used": 0}}
+```
+
+```json
+{"ok": true, "verdict": "PROVED", "exhaustive": true, "reachable_states": 4, "all_hold": true}
+```
+
+`PROVED` **and** `exhaustive: true` is the pair to read. The first cannot be issued without the
+second, but checking both makes the habit explicit — and the habit is what protects you on the day
+a spec grows past the bound.
+
+**4. What the agent must not do.** If the reply is `"verdict": "UNDETERMINED"`, that is not a pass.
+It means the search stopped early — read `incomplete_reason` and `advice`, bound the growing field,
+and ask again. If `ok` is `false`, no verdict exists at all and `all_hold` is `null`.
 
 ## Tools
 
@@ -168,13 +237,47 @@ composition analysis that finds hazards which exist only when two components are
 evidence trail that makes a verdict auditable afterwards are the commercial offering. This server is
 MIT and stays that way.
 
+## Troubleshooting
+
+**`ok: false, error: "SpecError"`.** The spec is malformed and the message names the key. Call
+`validate_spec` first, or `spec_help` for the format with a worked example.
+
+**`verdict: "UNDETERMINED"` on a spec I expected to pass.** The search did not cover the whole state
+space — usually a field that grows without bound. Read `incomplete_reason` and `advice`. Add a
+`when` guard that stops the growth. **Do not treat this as a pass.**
+
+**`ok: false, error: "BadArguments"`.** The tool was called with an argument it does not take. Every
+tool takes `spec`; `check_invariant` also takes an optional `invariant` name.
+
+**`ok: false` on `check_liveness` with `"spec declares no 'goal'"`.** Liveness needs something to
+reach. Add a `goal` block in the same shape as an invariant.
+
+**A `warnings` array appeared and the invariant still says `holds: true`.** The invariant names a
+value the bounded space cannot represent, so it is satisfied for a reason unrelated to your
+protocol — usually a typo in the literal, or an `int_bound` below the value you meant to forbid.
+
+**The server exits immediately with a JSON error.** The MCP SDK is not installed:
+`pip install "minicheck-mcp[mcp] @ git+https://github.com/nickharris808/minicheck-mcp.git"`. The
+tools remain importable and testable without it via `from minicheck_mcp import dispatch`.
+
+**My agent treats an error as "the property is fine".** It should not be able to: every response
+carries `all_hold` and `holds` explicitly, and both are `null` on any error, alongside
+`verdict: "ERROR"`. Branch on `result["ok"]` first.
+
+## Performance
+
+Bounded by the underlying checker: roughly 1.3–2.7×10⁵ states/second in CPython (measured). A spec
+that fits in a few tens of thousands of states answers in well under a second. There is no measured
+bottleneck in the server layer itself — it is a thin dispatch over
+[`minicheck`](https://github.com/nickharris808/minicheck).
+
 ## Tests
 
 ```
 pip install -e ".[test]" && pytest
 ```
 
-83 tests, every tool through the real `dispatch` path, including malformed input, unknown tools, and
+85 tests, every tool through the real `dispatch` path, including malformed input, unknown tools, and
 the no-code-execution guarantee.
 
 ## The portfolio
@@ -183,7 +286,7 @@ Five small, independently useful tools built around one idea: **a verdict you ca
 
 | | |
 |---|---|
-| [`minicheck`](https://github.com/nickharris808/minicheck) | An explicit-state model checker in ~1308 lines. Shortest counterexamples, no required dependencies. |
+| [`minicheck`](https://github.com/nickharris808/minicheck) | An explicit-state model checker in ~1619 lines, with a CLI. Shortest counterexamples, no required dependencies. |
 | [`protocol-bench`](https://github.com/nickharris808/protocol-bench) | 15 published IEEE 802.11 / 3GPP procedures with ground truth. A claimed detection must **replay**. |
 | [`minicheck-mcp`](https://github.com/nickharris808/minicheck-mcp) ← *you are here* | The checker as an **MCP server** — let an agent verify a state machine instead of guessing. |
 | [`polyfrac`](https://github.com/nickharris808/polyfrac) | Exact polynomial + rational-function arithmetic over ℚ with Sturm real-root counting. Zero deps. |
