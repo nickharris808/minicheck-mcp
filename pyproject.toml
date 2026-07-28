@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "minicheck-mcp"
-version = "0.1.0"
+version = "0.2.0"
 description = "A model checker as an MCP server: let an AI agent verify a state machine instead of guessing."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -17,7 +17,7 @@ classifiers = [
   "Programming Language :: Python :: 3",
   "Topic :: Software Development :: Testing",
 ]
-dependencies = ["minicheck>=0.1.0"]
+dependencies = ["minicheck>=0.2.0"]
 
 [project.optional-dependencies]
 mcp = ["mcp>=1.0"]

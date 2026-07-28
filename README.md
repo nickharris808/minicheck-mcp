@@ -2,7 +2,7 @@
 
 [![install](https://img.shields.io/badge/install-from%20GitHub-blue)](https://github.com/nickharris808/minicheck-mcp#install)
 [![CI](https://img.shields.io/badge/ci-passing-brightgreen)](https://github.com/nickharris808/minicheck-mcp/actions/workflows/ci.yml)
-[![tests](https://img.shields.io/badge/tests-19%20passing-brightgreen)](tests/)
+[![tests](https://img.shields.io/badge/tests-83%20passing-brightgreen)](tests/)
 [![python](https://img.shields.io/badge/python-3.10%2B-blue)](pyproject.toml)
 [![license](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 ![mcp](https://img.shields.io/badge/MCP-server-blueviolet)
@@ -100,7 +100,10 @@ Not "this might loop forever" — the exact four steps that break it.
 literal, or `{"incr": n}` / `{"decr": n}` for integers. An invariant is `{"forbid": {...}}` (fails
 when every listed field matches) or `{"require": {...}}` (fails unless they do).
 
-Integers are clamped so a runaway counter cannot produce an unbounded search.
+Integers are **bounded, and the bound is checked** — `int_bound` (default 64) is the largest magnitude
+a field may hold. A run that would carry a field past it stops and reports `exhaustive: false` rather
+than saturating the value, because a silently truncated search reports "holds" for states it never
+visited. See [Honest scope](#honest-scope) for how to read the resulting verdict.
 
 ## Why declarative
 
@@ -121,6 +124,40 @@ dispatch("check_invariant", {"spec": my_spec})
 Without `mcp` installed, `minicheck-mcp` prints a JSON error explaining how to install it and exits
 non-zero, rather than traceback-ing.
 
+## Honest scope
+
+**Read the verdict as three-valued.** This is the part that matters most for an agent, because an
+agent reads a field and acts on it rather than bringing judgement to a paragraph.
+
+| `all_hold` | `verdict` | meaning |
+|---|---|---|
+| `true` | `PROVED` | every reachable state was enumerated; nothing violated the invariant |
+| `false` | `REFUTED` | a counterexample is attached and it replays against your spec |
+| `null` | `UNDETERMINED` | the search did not finish. **Not a pass.** |
+| `null` | `ERROR` | with `ok: false` — no verdict was produced at all |
+
+Every response carries `all_hold` and `holds` explicitly, including errors. An earlier version
+omitted them on failure, so `result.get("all_hold")` returned `None` for a crash and for a genuine
+undetermined result alike — and both are falsy, exactly like a refutation.
+
+When `exhaustive` is `false`, the response also carries `incomplete_reason` and `advice` naming what
+to change. A `warnings` array appears when an invariant is trivially satisfied — it genuinely holds,
+but verifies nothing.
+
+**What it proves.** That a finite declarative state machine does or does not satisfy an invariant
+over every interleaving, within the declared bounds.
+
+**What it does not prove.**
+
+- Nothing about your implementation — only about the spec you sent. A spec abstracts.
+- Nothing outside `int_bound` (default 64) or the 200,000-state cap. Exceeding either yields
+  `UNDETERMINED`, never a silent pass.
+- Nothing about liveness beyond AG-EF, and nothing in LTL.
+
+**Nothing in a spec is ever executed.** A spec is data: field names, literals, and comparisons. There
+is no `eval`, no `exec`, and no code path that turns a string in a spec into a callable. That is why
+the declarative loader exists rather than accepting Python.
+
 ## What is not here
 
 This is the engine and a safe way to call it. The maintained hazard-property corpora, the
@@ -134,7 +171,7 @@ MIT and stays that way.
 pip install -e ".[test]" && pytest
 ```
 
-19 tests, every tool through the real `dispatch` path, including malformed input, unknown tools, and
+83 tests, every tool through the real `dispatch` path, including malformed input, unknown tools, and
 the no-code-execution guarantee.
 
 ## The portfolio
@@ -143,7 +180,7 @@ Five small, independently useful tools built around one idea: **a verdict you ca
 
 | | |
 |---|---|
-| [`minicheck`](https://github.com/nickharris808/minicheck) | An explicit-state model checker in ~560 lines. Shortest counterexamples, no required dependencies. |
+| [`minicheck`](https://github.com/nickharris808/minicheck) | An explicit-state model checker in ~1308 lines. Shortest counterexamples, no required dependencies. |
 | [`protocol-bench`](https://github.com/nickharris808/protocol-bench) | 15 published IEEE 802.11 / 3GPP procedures with ground truth. A claimed detection must **replay**. |
 | [`minicheck-mcp`](https://github.com/nickharris808/minicheck-mcp) ← *you are here* | The checker as an **MCP server** — let an agent verify a state machine instead of guessing. |
 | [`polyfrac`](https://github.com/nickharris808/polyfrac) | Exact polynomial + rational-function arithmetic over ℚ with Sturm real-root counting. Zero deps. |
