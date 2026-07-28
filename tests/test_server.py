@@ -5,6 +5,7 @@ these tests cover the real call path without needing the SDK or a running agent.
 """
 
 import pytest
+
 from minicheck_mcp import TOOL_SCHEMAS, TOOLS, dispatch
 
 BROKEN = {
