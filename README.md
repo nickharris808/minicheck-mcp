@@ -1,7 +1,7 @@
 # minicheck-mcp
 
-[![PyPI](https://img.shields.io/badge/pypi-minicheck--mcp-blue)](https://pypi.org/project/minicheck-mcp/)
-[![CI](https://img.shields.io/badge/ci-passing-brightgreen)](../.github/workflows/ci.yml)
+[![install](https://img.shields.io/badge/install-from%20GitHub-blue)](https://github.com/nickharris808/minicheck-mcp#install)
+[![CI](https://img.shields.io/badge/ci-passing-brightgreen)](https://github.com/nickharris808/minicheck-mcp/actions/workflows/ci.yml)
 [![tests](https://img.shields.io/badge/tests-19%20passing-brightgreen)](tests/)
 [![python](https://img.shields.io/badge/python-3.10%2B-blue)](pyproject.toml)
 [![license](https://img.shields.io/badge/license-MIT-green)](LICENSE)
@@ -30,8 +30,12 @@ nothing the agent sends is executed** — and returns a verdict with a shortest 
 ## Install
 
 ```
-pip install "minicheck-mcp[mcp]"
+# from GitHub (PyPI release pending)
+pip install "minicheck-mcp @ git+https://github.com/nickharris808/minicheck-mcp.git"
+pip install "minicheck-mcp[mcp] @ git+https://github.com/nickharris808/minicheck-mcp.git"  # + the MCP SDK
 ```
+
+> `pip install minicheck-mcp` will work once the PyPI release lands. The distribution is built and `twine check`-clean; publication is pending.
 
 Then register it (`claude_desktop_config.json`, or any MCP client):
 
@@ -124,11 +128,6 @@ composition analysis that finds hazards which exist only when two components are
 evidence trail that makes a verdict auditable afterwards are the commercial offering. This server is
 MIT and stays that way.
 
-## Related
-
-- [`minicheck`](../minicheck) — the checker itself, importable directly.
-- [`protocol-bench`](../protocol-bench) — 15 published IEEE/3GPP procedures with ground truth.
-
 ## Tests
 
 ```
@@ -137,6 +136,27 @@ pip install -e ".[test]" && pytest
 
 19 tests, every tool through the real `dispatch` path, including malformed input, unknown tools, and
 the no-code-execution guarantee.
+
+## The portfolio
+
+Five small, independently useful tools built around one idea: **a verdict you cannot check is not a verdict.**
+
+| | |
+|---|---|
+| [`minicheck`](https://github.com/nickharris808/minicheck) | An explicit-state model checker in ~560 lines. Shortest counterexamples, no required dependencies. |
+| [`protocol-bench`](https://github.com/nickharris808/protocol-bench) | 15 published IEEE 802.11 / 3GPP procedures with ground truth. A claimed detection must **replay**. |
+| [`minicheck-mcp`](https://github.com/nickharris808/minicheck-mcp) ← *you are here* | The checker as an **MCP server** — let an agent verify a state machine instead of guessing. |
+| [`polyfrac`](https://github.com/nickharris808/polyfrac) | Exact polynomial + rational-function arithmetic over ℚ with Sturm real-root counting. Zero deps. |
+| [`failclosed`](https://github.com/nickharris808/failclosed) | Default-deny ASGI middleware: a gated endpoint succeeds only on an affirmative verdict. |
+
+Try it in your browser: **[live demo](https://huggingface.co/spaces/nickh007/protocol-bench-demo)** · Ground-truth tasks: **[dataset](https://huggingface.co/datasets/nickh007/protocol-bench)**
+
+### The commercial offering
+
+These are the engine. What is **not** open source is what makes it useful at scale: the maintained
+hazard-property corpora, composition analysis that finds hazards existing only when two components
+are combined, the trust-model sensitivity sweep, and the evidence trail that makes a verdict auditable
+after the fact. The tools above are MIT and stay that way.
 
 ## Licence
 
