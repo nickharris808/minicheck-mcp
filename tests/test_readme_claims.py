@@ -126,3 +126,27 @@ def test_tutorial_fix_matches_the_readme():
     assert r["exhaustive"] is True
     assert r["reachable_states"] == 4
     assert r["all_hold"] is True
+
+
+def test_no_claim_is_made_about_another_repo_that_this_one_cannot_verify():
+    """A line count for a *different* package cannot be checked from here, so it must not be quoted.
+
+    A bulk reconciliation once rewrote the portfolio table's description of `minicheck` using THIS
+    repository's line count, so four READMEs confidently stated a wrong number about a package they
+    do not contain. Numbers about other repos are now simply absent.
+    """
+    import re
+    from pathlib import Path
+
+    readme = (Path(__file__).resolve().parents[1] / "README.md").read_text(encoding="utf-8")
+    for line in readme.splitlines():
+        if "github.com/nickharris808/" not in line:
+            continue
+        # The row describing this repo may quote its own numbers; rows about others may not.
+        others = [
+            m
+            for m in re.findall(r"github\.com/nickharris808/([a-z-]+)", line)
+            if m != Path(__file__).resolve().parents[1].name
+        ]
+        if others and re.search(r"~\d+\s+lines|\d+\s+tests", line):
+            raise AssertionError(f"unverifiable claim about {others}: {line.strip()}")

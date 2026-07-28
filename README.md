@@ -2,7 +2,7 @@
 
 [![install](https://img.shields.io/badge/install-from%20GitHub-blue)](https://github.com/nickharris808/minicheck-mcp#install)
 [![CI](https://img.shields.io/badge/ci-passing-brightgreen)](https://github.com/nickharris808/minicheck-mcp/actions/workflows/ci.yml)
-[![tests](https://img.shields.io/badge/tests-96%20passing-brightgreen)](tests/)
+[![tests](https://img.shields.io/badge/tests-97%20passing-brightgreen)](tests/)
 [![python](https://img.shields.io/badge/python-3.10%2B-blue)](pyproject.toml)
 [![license](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 ![mcp](https://img.shields.io/badge/MCP-server-blueviolet)
@@ -20,12 +20,8 @@ An agent with a decision procedure does not have to guess. It gets a verdict and
 fails, the exact sequence of steps that breaks it — which is also the thing it needs in order to fix
 the design rather than apologise for it.
 
-Agents write state machines all day — retry logic, lock protocols, session lifecycles, tool-call
-graphs, hand-off between sub-agents. Then they reason about correctness *in prose*, and get it wrong
-the way humans do: by missing an interleaving.
-
-This gives the agent a decision procedure. It takes a **declarative spec — data, never code, so
-nothing the agent sends is executed** — and returns a verdict with a shortest counterexample trace.
+The spec it sends is **data, never code, so nothing the agent submits is executed** — and what comes
+back is a verdict with a shortest counterexample trace.
 
 ## Install
 
@@ -270,10 +266,11 @@ carries `all_hold` and `holds` explicitly, and both are `null` on any error, alo
 
 ## Performance
 
-Bounded by the underlying checker: roughly 1.3–2.7×10⁵ states/second in CPython (measured). A spec
-that fits in a few tens of thousands of states answers in well under a second. There is no measured
-bottleneck in the server layer itself — it is a thin dispatch over
-[`minicheck`](https://github.com/nickharris808/minicheck).
+Bounded by the underlying checker. Specs arrive here declaratively, which is the checker's compiled
+path — roughly 2.5×10⁵–7.5×10⁵ states/second in CPython 3.11 on an M-series laptop, reproducible by
+running `python bench.py` in the [`minicheck`](https://github.com/nickharris808/minicheck)
+repository. A spec that fits in a few tens of thousands of states answers in well under a second.
+There is no measured bottleneck in the server layer itself — it is a thin dispatch.
 
 ## Tests
 
@@ -281,7 +278,7 @@ bottleneck in the server layer itself — it is a thin dispatch over
 pip install -e ".[test]" && pytest
 ```
 
-96 tests, every tool through the real `dispatch` path, including malformed input, unknown tools, and
+97 tests, every tool through the real `dispatch` path, including malformed input, unknown tools, and
 the no-code-execution guarantee.
 
 ## The portfolio
@@ -290,7 +287,7 @@ Five small, independently useful tools built around one idea: **a verdict you ca
 
 | | |
 |---|---|
-| [`minicheck`](https://github.com/nickharris808/minicheck) | An explicit-state model checker in ~437 lines, with a CLI. Shortest counterexamples, no required dependencies. |
+| [`minicheck`](https://github.com/nickharris808/minicheck) | An explicit-state model checker with a CLI. Shortest counterexamples, no required dependencies. |
 | [`protocol-bench`](https://github.com/nickharris808/protocol-bench) | 15 published IEEE 802.11 / 3GPP procedures with ground truth. A claimed detection must **replay**. |
 | [`minicheck-mcp`](https://github.com/nickharris808/minicheck-mcp) ← *you are here* | The checker as an **MCP server** — let an agent verify a state machine instead of guessing. |
 | [`polyfrac`](https://github.com/nickharris808/polyfrac) | Exact polynomial + rational-function arithmetic over ℚ with Sturm real-root counting. Zero deps. |
