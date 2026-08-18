@@ -1,8 +1,8 @@
 # minicheck-mcp
 
-[![install](https://img.shields.io/badge/install-from%20GitHub-blue)](https://github.com/nickharris808/minicheck-mcp#install)
-[![CI](https://img.shields.io/badge/ci-passing-brightgreen)](https://github.com/nickharris808/minicheck-mcp/actions/workflows/ci.yml)
-[![tests](https://img.shields.io/badge/tests-97%20passing-brightgreen)](tests/)
+[![install](https://img.shields.io/badge/install-git%2Bhttps-blue)](https://github.com/nickharris808/minicheck-mcp#install)
+[![CI](https://github.com/nickharris808/minicheck-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/nickharris808/minicheck-mcp/actions/workflows/ci.yml)
+[![tests](https://img.shields.io/badge/tests-102%20passing-brightgreen)](tests/)
 [![python](https://img.shields.io/badge/python-3.10%2B-blue)](pyproject.toml)
 [![license](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 ![mcp](https://img.shields.io/badge/MCP-server-blueviolet)
@@ -47,28 +47,56 @@ The repo ships this as `mcp.json`.
 ## 30-second quickstart
 
 Ask the agent: *"I have a retry loop that increments a counter until it succeeds. Check that it can't
-retry more than 3 times."* It calls `check_invariant` and gets back:
+retry more than 3 times."* It sends this spec to `check_invariant`:
+
+```json
+{
+  "name": "retry",
+  "fields": ["tries", "done"],
+  "initial": {"tries": 0, "done": 0},
+  "transitions": [
+    {"label": "attempt", "when": {"done": 0}, "set": {"tries": {"incr": 1}}},
+    {"label": "succeed", "when": {"done": 0}, "set": {"done": 1}}
+  ],
+  "invariants": {"bounded_retries": {"forbid": {"tries": 4}}}
+}
+```
+
+and gets back — reproduce it with
+`python -c "from minicheck_mcp import dispatch; import json; print(json.dumps(dispatch('check_invariant', {'spec': SPEC}), indent=2))"`:
 
 ```json
 {
   "ok": true,
+  "reachable_states": 129,
+  "exhaustive": false,
   "invariants": {
     "bounded_retries": {
       "holds": false,
-      "steps": 4,
       "counterexample": [
         {"label": null,      "state": {"tries": 0, "done": 0}},
         {"label": "attempt", "state": {"tries": 1, "done": 0}},
         {"label": "attempt", "state": {"tries": 2, "done": 0}},
         {"label": "attempt", "state": {"tries": 3, "done": 0}},
         {"label": "attempt", "state": {"tries": 4, "done": 0}}
-      ]
+      ],
+      "steps": 4
     }
-  }
+  },
+  "incomplete_reason": "IntBoundExceeded: transition 'attempt' drives field 'tries' to 65, outside int_bound 64. The state space is not finite under this bound, so no exhaustive verdict is available. Re-run with int_bound >= 65.",
+  "advice": "the state space was not fully explored, so any invariant not refuted below is UNDETERMINED (null), not proved. Raise int_bound or add a 'when' guard that bounds the growing field, then check again.",
+  "all_hold": false,
+  "verdict": "REFUTED",
+  "verdict_means": "a counterexample was found; it starts at the initial state and replays"
 }
 ```
 
 Not "this might loop forever" — the exact four steps that break it.
+
+Read the whole reply, though, and this quickstart is the reason why: `exhaustive` is **false**. The
+refutation stands regardless — a counterexample carries its own witness and that trace replays — but
+nothing else in this spec was established, because `attempt` has no guard and drives `tries` past
+`int_bound`. Refuting takes one witness; proving takes the whole space.
 
 ## Tutorial — what a session actually looks like
 
@@ -272,14 +300,71 @@ running `python bench.py` in the [`minicheck`](https://github.com/nickharris808/
 repository. A spec that fits in a few tens of thousands of states answers in well under a second.
 There is no measured bottleneck in the server layer itself — it is a thin dispatch.
 
+## FAQ
+
+**"Doesn't running a spec from a language model let it execute code?"**
+No, and this is why the declarative format exists. A spec is data: field names, literals, and equality
+comparisons. There is no `eval`, no `exec`, and no code path that turns a string in a spec into a
+callable. A field value that looks like `__import__('os').system(...)` stays a string and is compared
+as one. There is a test that asserts exactly that, and the adversarial suite fires code-shaped
+payloads at every tool. (`minicheck`'s Python `Model` API is different — that *is* code, and untrusted
+models from it deserve the caution any untrusted Python does. This server does not expose it.)
+
+**"Why not just let the agent write Python and run it?"**
+An MCP server that `exec`'d agent-supplied Python would be a remote code execution hole with extra
+steps. The declarative format costs expressiveness and buys a property you can state in one sentence
+and test.
+
+**"My agent read `all_hold` and concluded the property was fine, but there was an error."**
+It should not be able to: every response carries `all_hold` and `holds` explicitly, and both are
+`null` on any error, alongside `verdict: "ERROR"` and `ok: false`. An earlier version *omitted* them
+on failure, so `result.get("all_hold")` returned `None` for a crash and for a genuine undetermined
+result alike — and both are falsy, exactly like a refutation. Branch on `result["ok"]` first, then on
+`verdict`, never on the truthiness of `all_hold`.
+
+**"Why is there a `verdict_means` string in every reply?"**
+Because an agent paraphrasing a verdict tends to soften it, and "the check was inconclusive" becomes
+"it looks fine" in two more hops. `verdict_means` is a one-line explanation the agent can quote to a
+user verbatim.
+
+**"`UNDETERMINED` — should the agent retry, or report success?"**
+Neither by default. It means the search stopped early, so nothing was established. Read
+`incomplete_reason` and `advice`, which name what to change — usually a field growing without bound.
+Bound it and ask again. Reporting it as a pass is the failure mode this whole package is shaped
+against.
+
+**"Do I need the MCP SDK?"**
+Only to serve it over the transport. The tools are plain functions: `from minicheck_mcp import
+dispatch` is the same entry point the transport uses, so you can call it from a script or a test with
+no agent in the loop. Without `mcp` installed the `minicheck-mcp` command prints a JSON error saying
+how to install it and exits non-zero, rather than traceback-ing.
+
+**"Is it production-ready?"**
+Yes, and fully tested — but the surrounding agent ecosystem moves quickly, so the MCP surface is the
+part most likely to need a version bump. The checker underneath is
+[`minicheck`](https://github.com/nickharris808/minicheck) and is stable.
+
+**"Something here gave me a confident answer that was wrong."**
+Worth an issue rather than a workaround; please include the spec. A false `holds: true` reachable
+from an agent-facing server is the most serious bug this package can have, and one of exactly that
+kind was found, fixed and disclosed in `minicheck` 0.1.0.
+
 ## Tests
 
 ```
 pip install -e ".[test]" && pytest
 ```
 
-97 tests, every tool through the real `dispatch` path, including malformed input, unknown tools, and
-the no-code-execution guarantee.
+```console
+$ pytest -q
+........................................................................ [ 74%]
+.........................                                                [100%]
+100 passed in 2.31s
+```
+
+102 tests, every tool through the real `dispatch` path, including malformed input, unknown tools, and
+the no-code-execution guarantee. One asserts this README's own test count against
+`pytest --collect-only`, so the badge cannot drift.
 
 ## The portfolio
 
