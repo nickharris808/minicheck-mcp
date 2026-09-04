@@ -34,7 +34,7 @@ Issues = "https://github.com/nickharris808/minicheck-mcp/issues"
 
 [project.optional-dependencies]
 mcp = ["mcp>=1.0"]
-test = ["pytest>=7"]
+test = ["pytest>=7", "tomli; python_version < '3.11'"]
 
 [project.scripts]
 minicheck-mcp = "minicheck_mcp.server:main"
